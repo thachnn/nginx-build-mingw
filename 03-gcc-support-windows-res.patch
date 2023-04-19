@@ -1,0 +1,28 @@
+diff --git a/auto/cc/gcc b/auto/cc/gcc
+index a5c5c18..9722ea4 100644
+--- a/auto/cc/gcc
++++ b/auto/cc/gcc
+@@ -177,3 +177,10 @@ CFLAGS="$CFLAGS -g"
+ if [ ".$CPP" = "." ]; then
+     CPP="$CC -E"
+ fi
++
++# the resource file
++if which windres >/dev/null; then
++    NGX_RES="$NGX_OBJS/nginx.rc.o"
++    NGX_RCC="sed -e 's/ icon [a-z ]*/ ICON /;s,\\\\\\+,/,g' $NGX_WIN32_RC | windres -o $NGX_RES \$(CORE_INCS)"
++    CORE_LINK="$NGX_RES $CORE_LINK"
++fi
+diff --git a/auto/make b/auto/make
+index ef7c9f6..3edb303 100644
+--- a/auto/make
++++ b/auto/make
+@@ -196,7 +196,7 @@ ngx_modules_obj=`echo $ngx_modules_c | sed -e "s/\(.*\.\)c/\1$ngx_objext/"`
+ 
+ if test -n "$NGX_RES"; then
+    ngx_res=$NGX_RES
+-else
++elif [ -n "$NGX_RC" ]; then
+    ngx_res="$NGX_RC $NGX_ICONS"
+    ngx_rcc=`echo $NGX_RCC | sed -e "s/\//$ngx_regex_dirsep/g"`
+ fi

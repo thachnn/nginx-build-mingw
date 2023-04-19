@@ -1,0 +1,560 @@
+diff --git a/src/os/win32/ngx_files.c b/src/os/win32/ngx_files.c
+index 3017b45..9e52004 100644
+--- a/src/os/win32/ngx_files.c
++++ b/src/os/win32/ngx_files.c
+@@ -15,6 +15,39 @@ static ngx_int_t ngx_win32_check_filename(u_char *name, u_short *u,
+     size_t len);
+ static u_short *ngx_utf8_to_utf16(u_short *utf16, u_char *utf8, size_t *len);
+ 
++ngx_fd_t
++ngx_open_tempfile(u_char *name, ngx_uint_t persistent, ngx_uint_t access)
++{
++
++    size_t      len;
++    u_short    *u;
++    ngx_fd_t    fd;
++    ngx_err_t   err;
++    u_short     utf16[NGX_UTF16_BUFLEN];
++
++    len = NGX_UTF16_BUFLEN;
++    u = ngx_utf8_to_utf16(utf16, name, &len);
++
++    if (u == NULL) {
++        return INVALID_HANDLE_VALUE;
++    }
++
++    fd = CreateFileW(u, GENERIC_READ|GENERIC_WRITE,
++                     FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
++                     NULL,
++                     CREATE_NEW,
++                     persistent ? 0 :
++                         FILE_ATTRIBUTE_TEMPORARY|FILE_FLAG_DELETE_ON_CLOSE,
++                     NULL);
++
++    if (u != utf16) {
++        err = ngx_errno;
++        ngx_free(u);
++        ngx_set_errno(err);
++    }
++
++    return fd;
++}
+ 
+ /* FILE_FLAG_BACKUP_SEMANTICS allows to obtain a handle to a directory */
+ 
+@@ -205,18 +238,41 @@ ngx_write_console(ngx_fd_t fd, void *buf, size_t size)
+ ngx_err_t
+ ngx_win32_rename_file(ngx_str_t *from, ngx_str_t *to, ngx_log_t *log)
+ {
+-    u_char             *name;
++    u_short            *name;
+     ngx_err_t           err;
+     ngx_uint_t          collision;
+     ngx_atomic_uint_t   num;
++    size_t              to_len;
++    u_short             to_utf16[NGX_UTF16_BUFLEN];
++    u_short            *to_u;
++    size_t              from_len;
++    u_short             from_utf16[NGX_UTF16_BUFLEN];
++    u_short            *from_u;
++    size_t              buffer_size;
++
++    to_len = NGX_UTF16_BUFLEN;
++    to_u = ngx_utf8_to_utf16(to_utf16, to->data, &to_len);
++
++    if (to_u == NULL) {
++        return NGX_ENOMEM;
++    }
++
++    from_len = NGX_UTF16_BUFLEN;
++    from_u = ngx_utf8_to_utf16(from_utf16, from->data, &from_len);
+ 
+-    name = ngx_alloc(to->len + 1 + NGX_ATOMIC_T_LEN + 1 + sizeof("DELETE"),
+-                     log);
++    if (from_u == NULL) {
++        err = NGX_ENOMEM;
++        goto failed_to;
++    }
++
++    buffer_size = to_len + 1 + (NGX_ATOMIC_T_LEN << 1) + 1 + sizeof(L"DELETE");
++    name = ngx_alloc(buffer_size, log);
+     if (name == NULL) {
+-        return NGX_ENOMEM;
++        err = NGX_ENOMEM;
++        goto failed_from;
+     }
+ 
+-    ngx_memcpy(name, to->data, to->len);
++    ngx_memcpy(name, to_u, to_len);
+ 
+     collision = 0;
+ 
+@@ -225,9 +281,9 @@ ngx_win32_rename_file(ngx_str_t *from, ngx_str_t *to, ngx_log_t *log)
+     for ( ;; ) {
+         num = ngx_next_temp_number(collision);
+ 
+-        ngx_sprintf(name + to->len, ".%0muA.DELETE%Z", num);
++        swprintf(name + to_len, buffer_size - 1, L".%x.DELETE", num);
+ 
+-        if (MoveFile((const char *) to->data, (const char *) name) != 0) {
++        if (MoveFileW((LPCWSTR) to_u, (LPCWSTR) name) != 0) {
+             break;
+         }
+ 
+@@ -237,14 +293,14 @@ ngx_win32_rename_file(ngx_str_t *from, ngx_str_t *to, ngx_log_t *log)
+                       "MoveFile() \"%s\" to \"%s\" failed", to->data, name);
+     }
+ 
+-    if (MoveFile((const char *) from->data, (const char *) to->data) == 0) {
++    if (MoveFileW((LPCWSTR) from_u, (LPCWSTR) to_u) == 0) {
+         err = ngx_errno;
+ 
+     } else {
+         err = 0;
+     }
+ 
+-    if (DeleteFile((const char *) name) == 0) {
++    if (DeleteFileW((LPCWSTR) name) == 0) {
+         ngx_log_error(NGX_LOG_CRIT, log, ngx_errno,
+                       "DeleteFile() \"%s\" failed", name);
+     }
+@@ -253,6 +309,20 @@ ngx_win32_rename_file(ngx_str_t *from, ngx_str_t *to, ngx_log_t *log)
+ 
+     ngx_free(name);
+ 
++failed_from:
++    if (from_u != from_utf16) {
++        err = ngx_errno;
++        ngx_free(from_u);
++        ngx_set_errno(err);
++    }
++
++failed_to:
++    if (to_u != to_utf16) {
++        err = ngx_errno;
++        ngx_free(to_u);
++        ngx_set_errno(err);
++    }
++
+     return err;
+ }
+ 
+@@ -301,6 +371,146 @@ failed:
+     return rc;
+ }
+ 
++ngx_int_t
++ngx_getcwd(u_char *buf, ngx_int_t size)
++{
++    WCHAR wBuffer[NGX_MAX_PATH];
++    ngx_int_t ret = GetCurrentDirectoryW(NGX_MAX_PATH, wBuffer);
++    if (ret == 0) {
++      return 0;
++    }
++    return WideCharToMultiByte(CP_UTF8, 0, wBuffer, -1, (char *) buf, size, NULL, NULL);
++}
++
++ngx_int_t
++ngx_create_dir(u_char *name, ngx_int_t access)
++{
++    size_t                      len;
++    long                        rc;
++    u_short                    *u;
++    ngx_err_t                   err;
++    u_short                     utf16[NGX_UTF16_BUFLEN];
++
++    len = NGX_UTF16_BUFLEN;
++
++    u = ngx_utf8_to_utf16(utf16, name, &len);
++
++    if (u == NULL) {
++      return NGX_FILE_ERROR;
++    }
++
++    rc = CreateDirectoryW((const WCHAR *)u, NULL);
++
++    if (u != utf16) {
++        err = ngx_errno;
++        ngx_free(u);
++        ngx_set_errno(err);
++    }
++
++    return rc;
++}
++
++ngx_int_t
++ngx_delete_dir(u_char *name)
++{
++    size_t                      len;
++    long                        rc;
++    u_short                    *u;
++    ngx_err_t                   err;
++    u_short                     utf16[NGX_UTF16_BUFLEN];
++
++    len = NGX_UTF16_BUFLEN;
++
++    u = ngx_utf8_to_utf16(utf16, name, &len);
++
++    if (u == NULL) {
++      return NGX_FILE_ERROR;
++    }
++
++    rc = RemoveDirectoryW((const WCHAR *)u);
++
++    if (u != utf16) {
++        err = ngx_errno;
++        ngx_free(u);
++        ngx_set_errno(err);
++    }
++
++    return rc;
++}
++
++ngx_int_t
++ngx_delete_file(u_char *name)
++{
++    size_t                      len;
++    long                        rc;
++    u_short                    *u;
++    ngx_err_t                   err;
++    u_short                     utf16[NGX_UTF16_BUFLEN];
++
++    len = NGX_UTF16_BUFLEN;
++
++    u = ngx_utf8_to_utf16(utf16, name, &len);
++
++    if (u == NULL) {
++      return NGX_FILE_ERROR;
++    }
++
++    rc = DeleteFileW((const WCHAR *)u);
++
++    if (u != utf16) {
++        err = ngx_errno;
++        ngx_free(u);
++        ngx_set_errno(err);
++    }
++
++    return rc;
++}
++
++ngx_int_t
++ngx_rename_file(u_char *o, u_char *n)
++{
++    size_t                      len1;
++    size_t                      len2;
++    long                        rc;
++    u_short                    *u1;
++    u_short                    *u2;
++    ngx_err_t                   err;
++    u_short                     utf16_1[NGX_UTF16_BUFLEN];
++    u_short                     utf16_2[NGX_UTF16_BUFLEN];
++
++    len1 = NGX_UTF16_BUFLEN;
++    len2 = NGX_UTF16_BUFLEN;
++
++    u1 = ngx_utf8_to_utf16(utf16_1, o, &len1);
++
++    if (u1 == NULL) {
++        return NGX_FILE_ERROR;
++    }
++
++    rc = NGX_FILE_ERROR;
++    u2 = ngx_utf8_to_utf16(utf16_2, n, &len2);
++
++    if (u2 == NULL) {
++        goto fail1;
++    }
++
++    rc = MoveFileW((const WCHAR *) u1, (const WCHAR *) u2);
++
++    if (u2 != utf16_2) {
++        err = ngx_errno;
++        ngx_free(u2);
++        ngx_set_errno(err);
++    }
++
++fail1:
++    if (u1 != utf16_1) {
++        err = ngx_errno;
++        ngx_free(u1);
++        ngx_set_errno(err);
++    }
++
++    return rc;
++}
+ 
+ ngx_int_t
+ ngx_set_file_time(u_char *name, ngx_fd_t fd, time_t s)
+@@ -354,7 +564,7 @@ ngx_create_file_mapping(ngx_file_mapping_t *fm)
+         goto failed;
+     }
+ 
+-    fm->handle = CreateFileMapping(fm->fd, NULL, PAGE_READWRITE,
++    fm->handle = CreateFileMappingW(fm->fd, NULL, PAGE_READWRITE,
+                                    (u_long) ((off_t) fm->size >> 32),
+                                    (u_long) ((off_t) fm->size & 0xffffffff),
+                                    NULL);
+@@ -429,6 +639,9 @@ ngx_open_dir(ngx_str_t *name, ngx_dir_t *dir)
+ {
+     u_char     *pattern, *p;
+     ngx_err_t   err;
++    size_t      len;
++    u_short    *u;
++    u_short     utf16[NGX_UTF16_BUFLEN];
+ 
+     pattern = malloc(name->len + 3);
+     if (pattern == NULL) {
+@@ -436,21 +649,30 @@ ngx_open_dir(ngx_str_t *name, ngx_dir_t *dir)
+     }
+ 
+     p = ngx_cpymem(pattern, name->data, name->len);
+-
+     *p++ = '/';
+     *p++ = '*';
+     *p = '\0';
+ 
+-    dir->dir = FindFirstFile((const char *) pattern, &dir->finddata);
++    len = NGX_UTF16_BUFLEN;
++    u = ngx_utf8_to_utf16(utf16, pattern, &len);
++    ngx_free(pattern);
++    if (u == NULL) {
++        return NGX_ERROR;
++    }
+ 
++    dir->dir = FindFirstFileW((LPCWSTR) u, &dir->finddata);
++    if (u != utf16) {
++        ngx_free(u);
++    }
+     if (dir->dir == INVALID_HANDLE_VALUE) {
+         err = ngx_errno;
+-        ngx_free(pattern);
+         ngx_set_errno(err);
+         return NGX_ERROR;
+     }
+ 
+-    ngx_free(pattern);
++    dir->utf8_length = WideCharToMultiByte(CP_UTF8, 0, dir->finddata.cFileName, -1, NULL, 0, NULL, NULL);
++    dir->utf8 = calloc(dir->utf8_length, sizeof(char));
++    WideCharToMultiByte(CP_UTF8, 0, dir->finddata.cFileName, -1, dir->utf8, dir->utf8_length, NULL, NULL);
+ 
+     dir->valid_info = 1;
+     dir->ready = 1;
+@@ -467,8 +689,12 @@ ngx_read_dir(ngx_dir_t *dir)
+         return NGX_OK;
+     }
+ 
+-    if (FindNextFile(dir->dir, &dir->finddata) != 0) {
++    if (FindNextFileW(dir->dir, &dir->finddata) != 0) {
+         dir->type = 1;
++        free(dir->utf8);
++        dir->utf8_length = WideCharToMultiByte(CP_UTF8, 0, dir->finddata.cFileName, -1, NULL, 0, NULL, NULL);
++        dir->utf8 = calloc(dir->utf8_length, sizeof(char));
++        WideCharToMultiByte(CP_UTF8, 0, dir->finddata.cFileName, -1, dir->utf8, dir->utf8_length, NULL, NULL);
+         return NGX_OK;
+     }
+ 
+@@ -479,6 +705,7 @@ ngx_read_dir(ngx_dir_t *dir)
+ ngx_int_t
+ ngx_close_dir(ngx_dir_t *dir)
+ {
++    free(dir->utf8);
+     if (FindClose(dir->dir) == 0) {
+         return NGX_ERROR;
+     }
+@@ -490,11 +717,20 @@ ngx_close_dir(ngx_dir_t *dir)
+ ngx_int_t
+ ngx_open_glob(ngx_glob_t *gl)
+ {
++    ngx_int_t  rc;
+     u_char     *p;
+     size_t      len;
+     ngx_err_t   err;
++    u_short    *u;
++    u_short     utf16[NGX_UTF16_BUFLEN];
+ 
+-    gl->dir = FindFirstFile((const char *) gl->pattern, &gl->finddata);
++    len = NGX_UTF16_BUFLEN;
++    u = ngx_utf8_to_utf16(utf16, gl->pattern, &len);
++    if (u == NULL) {
++        return NGX_ERROR;
++    }
++
++    gl->dir = FindFirstFileW((LPCWSTR) u, &gl->finddata);
+ 
+     if (gl->dir == INVALID_HANDLE_VALUE) {
+ 
+@@ -504,10 +740,12 @@ ngx_open_glob(ngx_glob_t *gl)
+              && gl->test)
+         {
+             gl->no_match = 1;
+-            return NGX_OK;
++            rc = NGX_OK;
++            goto failed;
+         }
+ 
+-        return NGX_ERROR;
++        rc = NGX_ERROR;
++        goto failed;
+     }
+ 
+     for (p = gl->pattern; *p; p++) {
+@@ -516,21 +754,30 @@ ngx_open_glob(ngx_glob_t *gl)
+         }
+     }
+ 
+-    len = ngx_strlen(gl->finddata.cFileName);
++    len = WideCharToMultiByte(CP_UTF8, 0, gl->finddata.cFileName, -1, NULL, 0, NULL, NULL);
+     gl->name.len = gl->last + len;
+ 
+     gl->name.data = ngx_alloc(gl->name.len + 1, gl->log);
+     if (gl->name.data == NULL) {
+-        return NGX_ERROR;
++        rc = NGX_ERROR;
++        goto failed;
+     }
+ 
+     ngx_memcpy(gl->name.data, gl->pattern, gl->last);
+-    ngx_cpystrn(gl->name.data + gl->last, (u_char *) gl->finddata.cFileName,
+-                len + 1);
++    WideCharToMultiByte(CP_UTF8, 0, gl->finddata.cFileName, -1,
++                        (char *) gl->name.data + gl->last, len, NULL, NULL);
++    gl->name.data[gl->name.len] = '\0';
+ 
+     gl->ready = 1;
++    rc = NGX_OK;
+ 
+-    return NGX_OK;
++failed:
++    if (u != utf16) {
++        err = ngx_errno;
++        ngx_free(u);
++        ngx_set_errno(err);
++    }
++    return rc;
+ }
+ 
+ 
+@@ -554,9 +801,9 @@ ngx_read_glob(ngx_glob_t *gl, ngx_str_t *name)
+     ngx_free(gl->name.data);
+     gl->name.data = NULL;
+ 
+-    if (FindNextFile(gl->dir, &gl->finddata) != 0) {
++    if (FindNextFileW(gl->dir, &gl->finddata) != 0) {
+ 
+-        len = ngx_strlen(gl->finddata.cFileName);
++        len = WideCharToMultiByte(CP_UTF8, 0, gl->finddata.cFileName, -1, NULL, 0, NULL, NULL);
+         gl->name.len = gl->last + len;
+ 
+         gl->name.data = ngx_alloc(gl->name.len + 1, gl->log);
+@@ -565,8 +812,10 @@ ngx_read_glob(ngx_glob_t *gl, ngx_str_t *name)
+         }
+ 
+         ngx_memcpy(gl->name.data, gl->pattern, gl->last);
+-        ngx_cpystrn(gl->name.data + gl->last, (u_char *) gl->finddata.cFileName,
+-                    len + 1);
++
++        WideCharToMultiByte(CP_UTF8, 0, gl->finddata.cFileName, -1,
++                            (char *) gl->name.data + gl->last, len, NULL, NULL);
++        gl->name.data[gl->name.len] = '\0';
+ 
+         *name = gl->name;
+ 
+diff --git a/src/os/win32/ngx_files.h b/src/os/win32/ngx_files.h
+index a10839b..eaaa28e 100644
+--- a/src/os/win32/ngx_files.h
++++ b/src/os/win32/ngx_files.h
+@@ -30,7 +30,9 @@ typedef struct {
+ 
+ typedef struct {
+     HANDLE                          dir;
+-    WIN32_FIND_DATA                 finddata;
++    WIN32_FIND_DATAW                finddata;
++    char*                           utf8;
++    int                             utf8_length;
+ 
+     unsigned                        valid_info:1;
+     unsigned                        type:1;
+@@ -40,7 +42,7 @@ typedef struct {
+ 
+ typedef struct {
+     HANDLE                          dir;
+-    WIN32_FIND_DATA                 finddata;
++    WIN32_FIND_DATAW                finddata;
+ 
+     unsigned                        ready:1;
+     unsigned                        test:1;
+@@ -86,15 +88,8 @@ ngx_fd_t ngx_open_file(u_char *name, u_long mode, u_long create, u_long access);
+ #define NGX_FILE_OWNER_ACCESS       0
+ 
+ 
+-#define ngx_open_tempfile(name, persistent, access)                          \
+-    CreateFile((const char *) name,                                          \
+-               GENERIC_READ|GENERIC_WRITE,                                   \
+-               FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,           \
+-               NULL,                                                         \
+-               CREATE_NEW,                                                   \
+-               persistent ? 0:                                               \
+-                   FILE_ATTRIBUTE_TEMPORARY|FILE_FLAG_DELETE_ON_CLOSE,       \
+-               NULL);
++ngx_fd_t ngx_open_tempfile(u_char *name, ngx_uint_t persistent,
++                           ngx_uint_t access);
+ 
+ #define ngx_open_tempfile_n         "CreateFile()"
+ 
+@@ -118,13 +113,11 @@ ssize_t ngx_write_console(ngx_fd_t fd, void *buf, size_t size);
+ #define NGX_LINEFEED_SIZE           2
+ #define NGX_LINEFEED                CRLF
+ 
++ngx_int_t ngx_delete_file(u_char *name);
++#define ngx_delete_file_n           "DeleteFileW()"
+ 
+-#define ngx_delete_file(name)       DeleteFile((const char *) name)
+-#define ngx_delete_file_n           "DeleteFile()"
+-
+-
+-#define ngx_rename_file(o, n)       MoveFile((const char *) o, (const char *) n)
+-#define ngx_rename_file_n           "MoveFile()"
++ngx_int_t ngx_rename_file(u_char *o, u_char *n);
++#define ngx_rename_file_n           "MoveFileW()"
+ ngx_err_t ngx_win32_rename_file(ngx_str_t *from, ngx_str_t *to, ngx_log_t *log);
+ 
+ 
+@@ -174,8 +167,8 @@ void ngx_close_file_mapping(ngx_file_mapping_t *fm);
+ 
+ u_char *ngx_realpath(u_char *path, u_char *resolved);
+ #define ngx_realpath_n              ""
+-#define ngx_getcwd(buf, size)       GetCurrentDirectory(size, (char *) buf)
+-#define ngx_getcwd_n                "GetCurrentDirectory()"
++ngx_int_t ngx_getcwd(u_char *buf, ngx_int_t size);
++#define ngx_getcwd_n                "GetCurrentDirectoryW()"
+ #define ngx_path_separator(c)       ((c) == '/' || (c) == '\\')
+ 
+ #define NGX_HAVE_MAX_PATH           1
+@@ -193,20 +186,18 @@ ngx_int_t ngx_read_dir(ngx_dir_t *dir);
+ ngx_int_t ngx_close_dir(ngx_dir_t *dir);
+ #define ngx_close_dir_n             "FindClose()"
+ 
++ngx_int_t ngx_create_dir(u_char *name, ngx_int_t access);
++#define ngx_create_dir_n            "CreateDirectoryW()"
+ 
+-#define ngx_create_dir(name, access) CreateDirectory((const char *) name, NULL)
+-#define ngx_create_dir_n            "CreateDirectory()"
+-
+-
+-#define ngx_delete_dir(name)        RemoveDirectory((const char *) name)
+-#define ngx_delete_dir_n            "RemoveDirectory()"
++ngx_int_t ngx_delete_dir(u_char *name);
++#define ngx_delete_dir_n            "RemoveDirectoryW()"
+ 
+ 
+ #define ngx_dir_access(a)           (a)
+ 
+ 
+-#define ngx_de_name(dir)            ((u_char *) (dir)->finddata.cFileName)
+-#define ngx_de_namelen(dir)         ngx_strlen((dir)->finddata.cFileName)
++#define ngx_de_name(dir)            ((u_char *) (dir)->utf8)
++#define ngx_de_namelen(dir)         ((dir)->utf8_length - 1)
+ 
+ ngx_int_t ngx_de_info(u_char *name, ngx_dir_t *dir);
+ #define ngx_de_info_n               "dummy()"
