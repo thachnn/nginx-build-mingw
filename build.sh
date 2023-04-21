@@ -62,11 +62,23 @@ _CONFIG_ARGS=(
 auto/configure "${_CONFIG_ARGS[@]}" "$@"
 
 # build
-make -j2
-strip -o nginx.exe -s objs/nginx.exe
+make -j2 || ( [[ -s objs/nginx.exe ]] && make -j2 )
+for x in objs/*.{exe,so}; do strip -o "${x##*/}" -d --strip-unneeded "${x}" || true; done
+[[ "$(ls -S1 {,objs/}nginx.exe | head -1)" == nginx.exe ]] || mv -f *.{exe,so} objs/ || true
+
+# make changes
+make -f docs/GNUmakefile changes
+mv -f tmp/*/CHANGES* docs/text/ && rm -rf tmp
+
+# copy licenses
+if [[ -d "${_LIC_PATH=$MINGW_PREFIX/share/licenses}" ]]; then
+  cp -pf "$_LIC_PATH/zlib/LICENSE" docs/text/zlib.LICENSE
+  cp -pf "$_LIC_PATH"/pcre*/LICENCE docs/text/PCRE.LICENCE
+  cp -pf "$_LIC_PATH/openssl/LICENSE" docs/text/OpenSSL.LICENSE
+fi
 
 # package
 rm -rf temp; mkdir -p temp/logs
 tar -czf "../${_PKG}-$(gcc -dumpmachine | cut -d'-' -f1).tgz" \
-  --transform='s,^docs/html,html,;s,^docs/text,docs,;s,^temp/logs,logs,' \
-  nginx.exe contrib conf docs/text docs/html temp
+  --transform='s,^docs/html,html,;s,^docs/text,docs,;s,^temp/,,;s,^objs/nginx,nginx,;s,^objs/,modules/,' \
+   objs/*.{exe,so} contrib conf docs/text docs/html temp

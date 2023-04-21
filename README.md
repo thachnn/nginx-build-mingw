@@ -1,21 +1,23 @@
 # Nginx builder on MinGW
 
-Static [Nginx](https://www.nginx.com/) build scripts on [MinGW/MSYS2](https://www.msys2.org/)
-with builtin libraries for **Windows**
+[Nginx](https://www.nginx.com/) build scripts on [MinGW/MSYS2](https://www.msys2.org/) with builtin libraries for **Windows**
 
 ## Prerequisites
 
-- Install `MinGW` / `MSYS2` for **Windows**
+- Follow the instructions to install [MinGW/MSYS2](https://www.msys2.org/)
 
-- Install `MinGW` build tools via `pacman`
+- Install `MinGW` toolchain via `pacman` command in a `MSYS2` terminal
 
 ```bash
-pacman -S --needed --noconfirm autoconf autogen automake-wrapper libtool m4 make patch pkgconf \
- diffutils gawk file grep sed texinfo texinfo-tex wget \
- mingw-w64-x86_64-binutils mingw-w64-x86_64-crt-git mingw-w64-x86_64-gcc mingw-w64-x86_64-gcc-libs \
- mingw-w64-x86_64-headers-git mingw-w64-x86_64-make mingw-w64-x86_64-pkgconf mingw-w64-x86_64-tools-git \
- mingw-w64-x86_64-libmangle-git mingw-w64-x86_64-libwinpthread-git mingw-w64-x86_64-winpthreads-git \
- mingw-w64-x86_64-libxslt
+pacman -S --needed --noconfirm autotools patch autogen texinfo texinfo-tex \
+  mingw-w64-x86_64-{gcc,make,pkgconf,tools,libmangle}
+```
+
+- Install required/optional libraries for `Nginx`
+
+```bash
+pacman -U https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-openssl-1.1.1.s-1-any.pkg.tar.zst
+pacman -S --needed --noconfirm mingw-w64-x86_64-{pcre2,libxslt}
 ```
 
 ## Usage Examples
@@ -35,7 +37,7 @@ msys2_shell -mingw -defterm -no-start
 - Build a previous version of `Nginx`
 
 ```bash
-NGINX_TAG=1.22.1 ./nginx-build-mingw/build.sh
+NGINX_TAG=1.22.1 SCRATCH_DIR=. ./nginx-build-mingw/build.sh
 ```
 
 - Build with some additional patches
@@ -50,7 +52,19 @@ NGINX_TAG=1.23.3 CUSTOM_PATCH='1 2' ./nginx-build-mingw/build.sh
 git clone --depth=1 https://github.com/arut/nginx-dav-ext-module.git -b v3.0.0 dav-ext-module
 
 NGINX_TAG=1.23.4 CUSTOM_PATCH=1 ./nginx-build-mingw/build.sh \
- --with-cc-opt='-DFD_SETSIZE=1024 -s -O2 -fno-strict-aliasing -DLIBXML_STATIC -DLIBXSLT_STATIC -DLIBEXSLT_STATIC' \
- --with-http_xslt_module \
- --add-module=../dav-ext-module
+  --with-http_xslt_module --add-module=../dav-ext-module
+```
+
+- Build `Nginx` with dynamic libraries/modules
+
+```bash
+NGINX_TAG=1.22.1 CUSTOM_PATCH='1 2' ./nginx-build-mingw/build.sh \
+  --with-pcre=NONE --with-zlib=NONE --with-openssl=NONE --with-http_xslt_module=dynamic
+```
+
+- Build static `Nginx` with separated modules
+
+```bash
+NGINX_TAG=1.23.4 CUSTOM_PATCH=1 USE_LIBXSLT=YES ./nginx-build-mingw/build.sh \
+  --with-http_xslt_module=dynamic --add-dynamic-module=../dav-ext-module
 ```
