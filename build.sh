@@ -15,8 +15,8 @@ rm -rf "$_PKG"; tar -xf "$_TAG.tar.gz" && mv "nginx-$_TAG" "$_PKG"
 
 cd "$_PKG"
 # apply patches
-cat "$_SC_DIR"/0*.patch | patch -p1 -Nt
-[[ -z "$CUSTOM_PATCH" ]] || for x in $CUSTOM_PATCH; do patch -p1 -Nt -i "$_SC_DIR/$x"*.patch; done
+cat "$_SC_DIR"/0*.patch | patch -p1 -Ntl
+[[ -z "$CUSTOM_PATCH" ]] || for x in $CUSTOM_PATCH; do patch -p1 -Ntl -i "$_SC_DIR/$x"*.patch; done
 
 # configure
 _CONFIG_ARGS=(
@@ -76,6 +76,20 @@ if [[ -d "${_LIC_PATH=$MINGW_PREFIX/share/licenses}" ]]; then
   cp -pf "$_LIC_PATH"/pcre*/LICENCE docs/text/PCRE.LICENCE
   cp -pf "$_LIC_PATH/openssl/LICENSE" docs/text/OpenSSL.LICENSE
 fi
+
+# separate nginx.conf file
+mkdir -p conf/{http.d,modules}
+sed -n '/^    # HTTPS /,/^    #}/p' conf/nginx.conf > conf/http.d/https-server.conf && \
+  sed -i '/^    # HTTPS /,/^    #}/d' conf/nginx.conf
+sed -n '/^    # another virtual/,/^    #}/p' conf/nginx.conf > conf/http.d/somename-host.conf && \
+  sed -i '/^    # another virtual/,/^    #}/d' conf/nginx.conf
+sed -n '/^    server /,/^    }/p' conf/nginx.conf > conf/http.d/default-server.conf && \
+  sed -i '/^    server /,/^    }/d' conf/nginx.conf
+#
+sed -i 's/^    //' conf/http.d/*.conf
+for x in objs/*.so; do
+  x="${x##*/ngx_}"; echo "load_module  modules/ngx_$x;" > "conf/modules/${x%_module.*}.conf" || true
+done
 
 # package
 rm -rf temp; mkdir -p temp/logs

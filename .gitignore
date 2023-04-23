@@ -1,0 +1,8 @@
+nginx*/
+*.tar
+*.gz
+*.xz
+*.tgz
+*.zip
+*.7z
+*.rar

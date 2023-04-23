@@ -1,20 +1,113 @@
+diff --git a/auto/lib/geoip/conf b/auto/lib/geoip/conf
+index 8302aae1..32a6f40f 100644
+--- a/auto/lib/geoip/conf
++++ b/auto/lib/geoip/conf
+@@ -12,6 +12,16 @@
+     ngx_feature_test="GeoIP_open(NULL, 0)"
+     . auto/feature
+ 
++if [ $USE_GEOIP = YES -a -n "$MINGW_PREFIX" ]; then
++    # Static MinGW port
++
++    ngx_feature="GeoIP library in $MINGW_PREFIX/"
++    ngx_feature_path="$MINGW_PREFIX/include"
++    ngx_feature_libs="$MINGW_PREFIX/lib/libGeoIP.a -lws2_32 -lwsock32"
++
++    . auto/feature
++fi
++
+ 
+ if [ $ngx_found = no ]; then
+ 
+@@ -68,7 +78,7 @@ if [ $ngx_found = yes ]; then
+ 
+     CORE_INCS="$CORE_INCS $ngx_feature_path"
+ 
+-    if [ $USE_GEOIP = YES ]; then
++    if [ $USE_GEOIP = YES ] && [ $HTTP_GEOIP = YES -o $STREAM_GEOIP = YES ]; then
+         CORE_LIBS="$CORE_LIBS $ngx_feature_libs"
+     fi
+ 
+diff --git a/auto/lib/libatomic/conf b/auto/lib/libatomic/conf
+index d1e484ab..dc8fdd78 100644
+--- a/auto/lib/libatomic/conf
++++ b/auto/lib/libatomic/conf
+@@ -10,6 +10,13 @@ if [ $NGX_LIBATOMIC != YES ]; then
+     LINK_DEPS="$LINK_DEPS $NGX_LIBATOMIC/src/libatomic_ops.a"
+     CORE_LIBS="$CORE_LIBS $NGX_LIBATOMIC/src/libatomic_ops.a"
+ 
++elif [ -e "$MINGW_PREFIX/lib/libatomic_ops.a" ]; then
++
++    have=NGX_HAVE_LIBATOMIC . auto/have
++    CORE_INCS="$CORE_INCS $MINGW_PREFIX/include"
++    LINK_DEPS="$LINK_DEPS $MINGW_PREFIX/lib/libatomic_ops.a"
++    CORE_LIBS="$CORE_LIBS $MINGW_PREFIX/lib/libatomic_ops.a"
++
+ else
+ 
+     ngx_feature="atomic_ops library"
+diff --git a/auto/lib/libgd/conf b/auto/lib/libgd/conf
+index 67863976..f9fa13b0 100644
+--- a/auto/lib/libgd/conf
++++ b/auto/lib/libgd/conf
+@@ -13,6 +13,22 @@
+                       (void) img"
+     . auto/feature
+ 
++if [ $USE_LIBGD = YES -a -n "$MINGW_PREFIX" ]; then
++    # Static MinGW port
++    CC_TEST_FLAGS="${orig_CFLAGS=$CC_TEST_FLAGS} -DNONDLL"
++
++    ngx_feature="GD library in $MINGW_PREFIX/"
++    ngx_feature_path="$MINGW_PREFIX/include"
++    ngx_feature_libs="$MINGW_PREFIX/lib/libgd.a $MINGW_PREFIX/lib/libfontconfig.a $MINGW_PREFIX/lib/libfreetype.a $MINGW_PREFIX/lib/libharfbuzz.a $MINGW_PREFIX/lib/libbrotlidec.a $MINGW_PREFIX/lib/libbrotlicommon.a $MINGW_PREFIX/lib/libimagequant.a $MINGW_PREFIX/lib/libjpeg.a $MINGW_PREFIX/lib/libpng.a $MINGW_PREFIX/lib/libwebp.a $MINGW_PREFIX/lib/libsharpyuv.a  $MINGW_PREFIX/lib/libgraphite2.a $MINGW_PREFIX/lib/libexpat.a $MINGW_PREFIX/lib/libintl.a $MINGW_PREFIX/lib/libiconv.a $MINGW_PREFIX/lib/libbz2.a $MINGW_PREFIX/lib/libz.a $MINGW_PREFIX/lib/libstdc++.a $MINGW_PREFIX/lib/libgcc_eh.a $MINGW_PREFIX/lib/libwinpthread.a -lrpcrt4 -lbcrypt -luserenv -lgdi32 -ladvapi32 -lws2_32"
++
++    . auto/feature
++    if [ $ngx_found = no ]; then
++        CC_TEST_FLAGS=$orig_CFLAGS
++    else
++        have=NONDLL . auto/have
++    fi
++fi
++
+ 
+ if [ $ngx_found = no ]; then
+ 
+@@ -69,7 +85,7 @@ if [ $ngx_found = yes ]; then
+ 
+     CORE_INCS="$CORE_INCS $ngx_feature_path"
+ 
+-    if [ $USE_LIBGD = YES ]; then
++    if [ $USE_LIBGD = YES -a $HTTP_IMAGE_FILTER = YES ]; then
+         CORE_LIBS="$CORE_LIBS $ngx_feature_libs"
+     fi
+ 
+@@ -80,6 +96,7 @@ if [ $ngx_found = yes ]; then
+     ngx_feature_test="gdImagePtr img = gdImageCreateFromWebpPtr(1, NULL);
+                       (void) img"
+     . auto/feature
++    CC_TEST_FLAGS="${orig_CFLAGS:-$CC_TEST_FLAGS}"
+ 
+ else
+ 
 diff --git a/auto/lib/libxslt/conf b/auto/lib/libxslt/conf
-index 3063ac7c..b4785d29 100644
+index 3063ac7c..73e9f5c6 100644
 --- a/auto/lib/libxslt/conf
 +++ b/auto/lib/libxslt/conf
-@@ -12,6 +12,7 @@
+@@ -12,7 +12,7 @@
                        #include <libxslt/xsltInternals.h>
                        #include <libxslt/transform.h>
                        #include <libxslt/xsltutils.h>"
-+[ $USE_LIBXSLT != YES -a -n "$MINGW_PREFIX" ] && ngx_feature_path="$MINGW_PREFIX/include/libxml2" || \
-     ngx_feature_path="/usr/include/libxml2"
+-    ngx_feature_path="/usr/include/libxml2"
++    ngx_feature_path="${MINGW_PREFIX:-/usr}/include/libxml2"
      ngx_feature_libs="-lxml2 -lxslt"
      ngx_feature_test="xmlParserCtxtPtr    ctxt = NULL;
-@@ -73,6 +74,23 @@ if [ $ngx_found = no ]; then
- fi
+                       xsltStylesheetPtr   sheet = NULL;
+@@ -21,6 +21,23 @@
+                       xsltApplyStylesheet(sheet, doc, NULL);"
+     . auto/feature
  
- 
-+if [ $ngx_found = no -a -n "$MINGW_PREFIX" ]; then
++if [ $USE_LIBXSLT = YES -a -n "$MINGW_PREFIX" ]; then
 +    # Static MinGW port
 +    CC_TEST_FLAGS="${orig_CFLAGS=$CC_TEST_FLAGS} -DLIBXML_STATIC -DLIBXSLT_STATIC"
 +
@@ -31,22 +124,29 @@ index 3063ac7c..b4785d29 100644
 +    fi
 +fi
 +
- if [ $ngx_found = yes ]; then
+ 
+ if [ $ngx_found = no ]; then
+ 
+@@ -77,7 +94,7 @@ if [ $ngx_found = yes ]; then
  
      CORE_INCS="$CORE_INCS $ngx_feature_path"
-@@ -100,6 +118,7 @@ fi
+ 
+-    if [ $USE_LIBXSLT = YES ]; then
++    if [ $USE_LIBXSLT = YES -a $HTTP_XSLT = YES ]; then
+         CORE_LIBS="$CORE_LIBS $ngx_feature_libs"
+     fi
+ 
+@@ -100,11 +117,30 @@ fi
      ngx_feature_name=NGX_HAVE_EXSLT
      ngx_feature_run=no
      ngx_feature_incs="#include <libexslt/exslt.h>"
-+[ $USE_LIBXSLT != YES -a -n "$MINGW_PREFIX" ] && ngx_feature_path="$MINGW_PREFIX/include/libxml2" || \
-     ngx_feature_path="/usr/include/libxml2"
+-    ngx_feature_path="/usr/include/libxml2"
++    ngx_feature_path="${MINGW_PREFIX:-/usr}/include/libxml2"
      ngx_feature_libs="-lexslt"
      ngx_feature_test="exsltRegisterAll();"
-@@ -156,10 +175,29 @@ if [ $ngx_found = no ]; then
- fi
+     . auto/feature
  
- 
-+if [ $ngx_found = no -a -n "$MINGW_PREFIX" ]; then
++if [ $USE_LIBXSLT = YES -a -n "$MINGW_PREFIX" ]; then
 +    # Static MinGW port
 +    CC_TEST_FLAGS="${orig_CFLAGS=$CC_TEST_FLAGS} -DLIBXML_STATIC -DLIBXSLT_STATIC -DLIBEXSLT_STATIC"
 +
@@ -60,20 +160,40 @@ index 3063ac7c..b4785d29 100644
 +    if [ $ngx_found = yes ]; then
 +        have=LIBEXSLT_STATIC . auto/have
 +
-+        [ $USE_LIBXSLT != YES ] || CORE_LIBS="${CORE_LIBS/% $NGX_LIB_LIBXSLT/}"
++        [ $HTTP_XSLT != YES ] || CORE_LIBS="${CORE_LIBS/% $NGX_LIB_LIBXSLT/}"
 +        NGX_LIB_LIBXSLT=
 +    fi
 +fi
 +
+ if [ $ngx_found = no ]; then
+ 
+     # FreeBSD port
+@@ -157,9 +193,9 @@ fi
+ 
+ 
  if [ $ngx_found = yes ]; then
-     if [ $USE_LIBXSLT = YES ]; then
+-    if [ $USE_LIBXSLT = YES ]; then
 -        CORE_LIBS="$CORE_LIBS -lexslt"
++    if [ $USE_LIBXSLT = YES -a $HTTP_XSLT = YES ]; then
 +        CORE_LIBS="$CORE_LIBS $ngx_feature_libs"
      fi
  
 -    NGX_LIB_LIBXSLT="$NGX_LIB_LIBXSLT -lexslt"
 +    NGX_LIB_LIBXSLT="$NGX_LIB_LIBXSLT $ngx_feature_libs"
  fi
+diff --git a/auto/lib/make b/auto/lib/make
+index b64e3290..0c840ce5 100644
+--- a/auto/lib/make
++++ b/auto/lib/make
+@@ -15,7 +15,7 @@ if [ $ZLIB != NONE -a $ZLIB != NO -a $ZLIB != YES ]; then
+     . auto/lib/zlib/make
+ fi
+ 
+-if [ $NGX_LIBATOMIC != NO -a $NGX_LIBATOMIC != YES ]; then
++if [ $NGX_LIBATOMIC != NONE -a $NGX_LIBATOMIC != NO -a $NGX_LIBATOMIC != YES ]; then
+     . auto/lib/libatomic/make
+ fi
+ 
 diff --git a/auto/lib/openssl/conf b/auto/lib/openssl/conf
 index 4fb52df7..1d486253 100644
 --- a/auto/lib/openssl/conf
@@ -105,10 +225,10 @@ index 4fb52df7..1d486253 100644
          OPENSSL=NO
  
 diff --git a/auto/lib/pcre/conf b/auto/lib/pcre/conf
-index 20c1cafb..ecfa070d 100644
+index 20c1cafb..c5a8de55 100644
 --- a/auto/lib/pcre/conf
 +++ b/auto/lib/pcre/conf
-@@ -3,7 +3,28 @@
+@@ -3,7 +3,32 @@
  # Copyright (C) Nginx, Inc.
  
  
@@ -122,6 +242,8 @@ index 20c1cafb..ecfa070d 100644
 +
 +    CORE_INCS="$CORE_INCS $MINGW_PREFIX/include/"
 +    CORE_DEPS="$CORE_DEPS $MINGW_PREFIX/include/pcre2.h"
++
++    LINK_DEPS="$LINK_DEPS $MINGW_PREFIX/lib/libpcre2-8.a"
 +    CORE_LIBS="$CORE_LIBS $MINGW_PREFIX/lib/libpcre2-8.a"
 +
 +elif [ $PCRE = YES -a -e "$MINGW_PREFIX/include/pcre.h" ]; then
@@ -132,13 +254,15 @@ index 20c1cafb..ecfa070d 100644
 +
 +    CORE_INCS="$CORE_INCS $MINGW_PREFIX/include"
 +    CORE_DEPS="$CORE_DEPS $MINGW_PREFIX/include/pcre.h"
++
++    LINK_DEPS="$LINK_DEPS $MINGW_PREFIX/lib/libpcre.a"
 +    CORE_LIBS="$CORE_LIBS $MINGW_PREFIX/lib/libpcre.a"
 +
 +elif [ $PCRE != NONE ]; then
  
      if [ -f $PCRE/src/pcre2.h.generic ]; then
  
-@@ -68,7 +89,7 @@ if [ $PCRE != NONE ]; then
+@@ -68,7 +93,7 @@ if [ $PCRE != NONE ]; then
  
  else
  
@@ -148,25 +272,26 @@ index 20c1cafb..ecfa070d 100644
      fi
  
 diff --git a/auto/lib/zlib/conf b/auto/lib/zlib/conf
-index 239592e3..4c6d960e 100644
+index 239592e3..ee852656 100644
 --- a/auto/lib/zlib/conf
 +++ b/auto/lib/zlib/conf
-@@ -3,7 +3,13 @@
+@@ -3,7 +3,14 @@
  # Copyright (C) Nginx, Inc.
  
  
 -if [ $ZLIB != NONE ]; then
 +if [ $ZLIB = YES -a -e "$MINGW_PREFIX/lib/libz.a" ]; then
-+    have=NGX_ZLIB . auto/have
-+
 +    CORE_INCS="$CORE_INCS $MINGW_PREFIX/include"
++
++    have=NGX_ZLIB . auto/have
++    LINK_DEPS="$LINK_DEPS $MINGW_PREFIX/lib/libz.a"
 +    CORE_LIBS="$CORE_LIBS $MINGW_PREFIX/lib/libz.a"
 +
 +elif [ $ZLIB != NONE ]; then
      CORE_INCS="$CORE_INCS $ZLIB"
  
      case "$NGX_CC_NAME" in
-@@ -42,7 +48,7 @@ if [ $ZLIB != NONE ]; then
+@@ -42,7 +49,7 @@ if [ $ZLIB != NONE ]; then
  
  else
  
@@ -176,15 +301,19 @@ index 239592e3..4c6d960e 100644
  
          # FreeBSD, Solaris, Linux
 diff --git a/auto/options b/auto/options
-index 48f3a1a4..1a81815d 100644
+index 48f3a1a4..700521d7 100644
 --- a/auto/options
 +++ b/auto/options
-@@ -159,7 +159,7 @@ ZLIB_ASM=NO
+@@ -159,9 +159,9 @@ ZLIB_ASM=NO
  USE_PERL=NO
  NGX_PERL=perl
  
 -USE_LIBXSLT=NO
+-USE_LIBGD=NO
+-USE_GEOIP=NO
 +USE_LIBXSLT="${USE_LIBXSLT:-NO}"
- USE_LIBGD=NO
- USE_GEOIP=NO
++USE_LIBGD="${USE_LIBGD:-NO}"
++USE_GEOIP="${USE_GEOIP:-NO}"
  
+ NGX_GOOGLE_PERFTOOLS=NO
+ NGX_CPP_TEST=NO
