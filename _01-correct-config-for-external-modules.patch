@@ -1,0 +1,12 @@
+diff --git a/dav-ext-module/config b/dav-ext-module/config
+index 91ae1b3..89be509 100644
+--- a/dav-ext-module/config
++++ b/dav-ext-module/config
+@@ -11,6 +11,7 @@ ngx_module_name=ngx_http_dav_ext_module
+ # ngx_module_libs=-lxml2
+ 
+ ngx_module_libs=LIBXSLT
++[ $HTTP_XSLT = YES ] || HTTP_XSLT=$ngx_module_link
+ 
+ ngx_module_srcs="$ngx_addon_dir/ngx_http_dav_ext_module.c"
+ 

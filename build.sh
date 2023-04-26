@@ -56,10 +56,11 @@ _CONFIG_ARGS=(
   --with-http_ssl_module \
   --with-mail_ssl_module \
   --with-stream_ssl_module \
-  --with-ld-opt='-Wl,--gc-sections,--build-id=none'
+  --with-ld-opt='-Wl,--gc-sections,--build-id=none -Wl,--exclude-libs=ALL'
 )
 # --with-pcre-jit
 auto/configure "${_CONFIG_ARGS[@]}" "$@"
+sed -i 's/\(-exclude-libs=ALL'\''\?\) .*"$/\1"/' objs/ngx_auto_config.h
 
 # build
 make -j2 || ( [[ -s objs/nginx.exe ]] && make -j2 )
