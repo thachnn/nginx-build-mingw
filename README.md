@@ -9,8 +9,7 @@
 - Install `MinGW` toolchain via `pacman` command in a `MSYS2` terminal
 
 ```bash
-pacman -S --needed --noconfirm autotools patch autogen texinfo texinfo-tex \
-  mingw-w64-x86_64-{gcc,make,pkgconf,tools,libmangle}
+pacman -S --needed --noconfirm base-devel mingw-w64-x86_64-{gcc,autotools}
 ```
 
 - Install required/optional libraries for `Nginx`

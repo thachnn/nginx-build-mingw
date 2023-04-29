@@ -74,8 +74,8 @@ mv -f tmp/*/CHANGES* docs/text/ && rm -rf tmp
 # copy licenses
 if [[ -d "${_LIC_PATH=$MINGW_PREFIX/share/licenses}" ]]; then
   cp -pf "$_LIC_PATH/zlib/LICENSE" docs/text/zlib.LICENSE
-  cp -pf "$_LIC_PATH"/pcre*/LICENCE docs/text/PCRE.LICENCE
-  cp -pf "$_LIC_PATH/openssl/LICENSE" docs/text/OpenSSL.LICENSE
+  for x in "$_LIC_PATH"/pcre*/LICENCE; do cp -pf "$x" docs/text/PCRE.LICENCE; done
+  for x in "$_LIC_PATH"/openssl*/LICENSE; do cp -pf "$x" docs/text/OpenSSL.LICENSE; done
 fi
 
 # separate nginx.conf file

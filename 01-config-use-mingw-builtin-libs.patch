@@ -1,5 +1,5 @@
 diff --git a/auto/lib/geoip/conf b/auto/lib/geoip/conf
-index 8302aae1..12208734 100644
+index 8302aae..1220873 100644
 --- a/auto/lib/geoip/conf
 +++ b/auto/lib/geoip/conf
 @@ -12,6 +12,16 @@
@@ -29,28 +29,30 @@ index 8302aae1..12208734 100644
      fi
  
 diff --git a/auto/lib/libatomic/conf b/auto/lib/libatomic/conf
-index d1e484ab..009de43e 100644
+index d1e484a..a0a0875 100644
 --- a/auto/lib/libatomic/conf
 +++ b/auto/lib/libatomic/conf
-@@ -10,6 +10,13 @@ if [ $NGX_LIBATOMIC != YES ]; then
-     LINK_DEPS="$LINK_DEPS $NGX_LIBATOMIC/src/libatomic_ops.a"
-     CORE_LIBS="$CORE_LIBS $NGX_LIBATOMIC/src/libatomic_ops.a"
+@@ -3,7 +3,14 @@
+ # Copyright (C) Nginx, Inc.
  
-+elif [ -e "$MINGW_PREFIX/lib/libatomic_ops.a" ]; then
+ 
+-if [ $NGX_LIBATOMIC != YES ]; then
++if [ $NGX_LIBATOMIC = YES -a -e "$MINGW_PREFIX/lib/libatomic_ops.a" ]; then
 +
 +    have=NGX_HAVE_LIBATOMIC . auto/have
 +    CORE_INCS="$CORE_INCS $MINGW_PREFIX/include"
 +    #LINK_DEPS="$LINK_DEPS $MINGW_PREFIX/lib/libatomic_ops.a"
 +    CORE_LIBS="$CORE_LIBS $MINGW_PREFIX/lib/libatomic_ops.a"
 +
- else
++elif [ $NGX_LIBATOMIC != YES -a $NGX_LIBATOMIC != NONE ]; then
  
-     ngx_feature="atomic_ops library"
+     have=NGX_HAVE_LIBATOMIC . auto/have
+     CORE_INCS="$CORE_INCS $NGX_LIBATOMIC/src"
 diff --git a/auto/lib/libgd/conf b/auto/lib/libgd/conf
-index 67863976..21b95ee1 100644
+index 6786397..2e11074 100644
 --- a/auto/lib/libgd/conf
 +++ b/auto/lib/libgd/conf
-@@ -13,6 +13,22 @@
+@@ -13,6 +13,23 @@
                        (void) img"
      . auto/feature
  
@@ -60,7 +62,8 @@ index 67863976..21b95ee1 100644
 +
 +    ngx_feature="GD library in $MINGW_PREFIX/"
 +    ngx_feature_path="$MINGW_PREFIX/include"
-+    ngx_feature_libs="$MINGW_PREFIX/lib/libgd.a $MINGW_PREFIX/lib/libfontconfig.a $MINGW_PREFIX/lib/libfreetype.a $MINGW_PREFIX/lib/libbrotlidec.a $MINGW_PREFIX/lib/libbrotlicommon.a $MINGW_PREFIX/lib/libimagequant.a $MINGW_PREFIX/lib/libjpeg.a $MINGW_PREFIX/lib/libpng.a $MINGW_PREFIX/lib/libwebp.a $MINGW_PREFIX/lib/libsharpyuv.a $MINGW_PREFIX/lib/libXpm.a $MINGW_PREFIX/lib/libexpat.a $MINGW_PREFIX/lib/libintl.a $MINGW_PREFIX/lib/libiconv.a $MINGW_PREFIX/lib/libbz2.a $MINGW_PREFIX/lib/libz.a $MINGW_PREFIX/lib/libstdc++.a $MINGW_PREFIX/lib/libgcc_eh.a $MINGW_PREFIX/lib/libwinpthread.a -lrpcrt4 -lbcrypt -luserenv -lgdi32 -ladvapi32 -lws2_32"
++    ngx_feature_libs="$MINGW_PREFIX/lib/libgd.a $MINGW_PREFIX/lib/libfontconfig.a $MINGW_PREFIX/lib/libfreetype.a $MINGW_PREFIX/lib/libbrotlidec.a $MINGW_PREFIX/lib/libbrotlicommon.a $MINGW_PREFIX/lib/libimagequant.a $MINGW_PREFIX/lib/libjpeg.a $MINGW_PREFIX/lib/libpng.a $MINGW_PREFIX/lib/libwebp.a $MINGW_PREFIX/lib/libsharpyuv.a $MINGW_PREFIX/lib/libXpm.a $MINGW_PREFIX/lib/libexpat.a $MINGW_PREFIX/lib/libintl.a $MINGW_PREFIX/lib/libiconv.a $MINGW_PREFIX/lib/libbz2.a $MINGW_PREFIX/lib/libz.a"
++    ngx_feature_libs="$ngx_feature_libs $MINGW_PREFIX/lib/libstdc++.a $(echo -n "$MINGW_PREFIX/lib/gcc/$MINGW_CHOST"/*/libgcc_eh.a) $MINGW_PREFIX/lib/libwinpthread.a -lrpcrt4 -lbcrypt -luserenv -lgdi32 -ladvapi32 -lws2_32"
 +
 +    . auto/feature
 +    if [ $ngx_found = no ]; then
@@ -73,7 +76,7 @@ index 67863976..21b95ee1 100644
  
  if [ $ngx_found = no ]; then
  
-@@ -69,7 +85,7 @@ if [ $ngx_found = yes ]; then
+@@ -69,7 +86,7 @@ if [ $ngx_found = yes ]; then
  
      CORE_INCS="$CORE_INCS $ngx_feature_path"
  
@@ -82,7 +85,7 @@ index 67863976..21b95ee1 100644
          CORE_LIBS="$CORE_LIBS $ngx_feature_libs"
      fi
  
-@@ -80,6 +96,7 @@ if [ $ngx_found = yes ]; then
+@@ -80,6 +97,7 @@ if [ $ngx_found = yes ]; then
      ngx_feature_test="gdImagePtr img = gdImageCreateFromWebpPtr(1, NULL);
                        (void) img"
      . auto/feature
@@ -91,7 +94,7 @@ index 67863976..21b95ee1 100644
  else
  
 diff --git a/auto/lib/libxslt/conf b/auto/lib/libxslt/conf
-index 3063ac7c..472b08c0 100644
+index 3063ac7..472b08c 100644
 --- a/auto/lib/libxslt/conf
 +++ b/auto/lib/libxslt/conf
 @@ -12,7 +12,7 @@
@@ -182,7 +185,7 @@ index 3063ac7c..472b08c0 100644
 +    NGX_LIB_LIBXSLT="$NGX_LIB_LIBXSLT $ngx_feature_libs"
  fi
 diff --git a/auto/lib/make b/auto/lib/make
-index b64e3290..0c840ce5 100644
+index b64e329..0c840ce 100644
 --- a/auto/lib/make
 +++ b/auto/lib/make
 @@ -15,7 +15,7 @@ if [ $ZLIB != NONE -a $ZLIB != NO -a $ZLIB != YES ]; then
@@ -195,7 +198,7 @@ index b64e3290..0c840ce5 100644
  fi
  
 diff --git a/auto/lib/openssl/conf b/auto/lib/openssl/conf
-index 4fb52df7..1d486253 100644
+index 4fb52df..1d48625 100644
 --- a/auto/lib/openssl/conf
 +++ b/auto/lib/openssl/conf
 @@ -3,7 +3,15 @@
@@ -225,10 +228,10 @@ index 4fb52df7..1d486253 100644
          OPENSSL=NO
  
 diff --git a/auto/lib/pcre/conf b/auto/lib/pcre/conf
-index 20c1cafb..ecfa070d 100644
+index 20c1caf..68caa43 100644
 --- a/auto/lib/pcre/conf
 +++ b/auto/lib/pcre/conf
-@@ -3,7 +3,28 @@
+@@ -3,7 +3,31 @@
  # Copyright (C) Nginx, Inc.
  
  
@@ -254,11 +257,14 @@ index 20c1cafb..ecfa070d 100644
 +    CORE_DEPS="$CORE_DEPS $MINGW_PREFIX/include/pcre.h"
 +    CORE_LIBS="$CORE_LIBS $MINGW_PREFIX/lib/libpcre.a"
 +
++    if [ $PCRE_JIT = YES ]; then
++        have=NGX_HAVE_PCRE_JIT . auto/have
++    fi
 +elif [ $PCRE != NONE ]; then
  
      if [ -f $PCRE/src/pcre2.h.generic ]; then
  
-@@ -68,7 +89,7 @@ if [ $PCRE != NONE ]; then
+@@ -68,7 +92,7 @@ if [ $PCRE != NONE ]; then
  
  else
  
@@ -268,7 +274,7 @@ index 20c1cafb..ecfa070d 100644
      fi
  
 diff --git a/auto/lib/zlib/conf b/auto/lib/zlib/conf
-index 239592e3..03eec424 100644
+index 239592e..03eec42 100644
 --- a/auto/lib/zlib/conf
 +++ b/auto/lib/zlib/conf
 @@ -3,7 +3,14 @@
@@ -297,7 +303,7 @@ index 239592e3..03eec424 100644
  
          # FreeBSD, Solaris, Linux
 diff --git a/auto/options b/auto/options
-index 48f3a1a4..700521d7 100644
+index 48f3a1a..700521d 100644
 --- a/auto/options
 +++ b/auto/options
 @@ -159,9 +159,9 @@ ZLIB_ASM=NO
